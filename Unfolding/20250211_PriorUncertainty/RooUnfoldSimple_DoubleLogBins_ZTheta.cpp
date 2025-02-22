@@ -35,6 +35,7 @@ using std::endl;
 #include "TNtuple.h"
 #include "TProfile.h"
 #include "TMath.h"
+#include "TF1.h"
 
 #include "RooUnfold.h"
 #include "RooUnfoldBayes.h"
@@ -85,7 +86,7 @@ void RooUnfoldSimple_DoubleLogBins_ZTheta(std::string date = "02122025"){
    double zBinMax = 0.5;
 
    // energy binning
-   const int EnergyBinCount = 15; 
+   const int EnergyBinCount = 15;
    double EnergyBins[EnergyBinCount+1];
    double EnergyBinMin = 4e-6;
    double EnergyBinMax = 0.2;
@@ -101,7 +102,7 @@ void RooUnfoldSimple_DoubleLogBins_ZTheta(std::string date = "02122025"){
       // z double log binning
       zBins[i] = exp(log(zBinMin) + (log(zBinMax) - log(zBinMin)) / BinCount * i);
       zBins[2*BinCount-i] = zBinMax * 2 - exp(log(zBinMin) + (log(zBinMax) - log(zBinMin)) / BinCount * i);
-    
+
    }
 
   //  for(int e = 0; e <= EnergyBinCount; e++){
@@ -167,12 +168,12 @@ void RooUnfoldSimple_DoubleLogBins_ZTheta(std::string date = "02122025"){
     smeared->GetEntry(iEntry);
     for(int i=0; i<nPairsData; i++){
       if(recoE1Data[i] < 0 || recoE2Data[i] < 0) continue; // skip over the unmatched pairs
-      if(thetaData[i] <  BinMin) continue; 
+      if(thetaData[i] <  BinMin) continue;
       int BinTheta = FindBin(thetaData[i], 2 * BinCount, Bins);
-      double z = (1-cos(thetaData[i]))/2; 
+      double z = (1-cos(thetaData[i]))/2;
       h2raw_Theta->Fill(BinTheta,e1e2data[i], 1.0);
-      int BinZ = FindBin(z, 2*BinCount, zBins); 
-      h2raw_Z->Fill(BinZ,e1e2data[i], 1.0); 
+      int BinZ = FindBin(z, 2*BinCount, zBins);
+      h2raw_Z->Fill(BinZ,e1e2data[i], 1.0);
     }
   }
   std::cout << "Integral in theta " << h2raw_Theta->Integral() << " Integral in Z " << h2raw_Z->Integral() << std::endl;
@@ -193,13 +194,40 @@ void RooUnfoldSimple_DoubleLogBins_ZTheta(std::string date = "02122025"){
   int nPairsMC;
 
 
-  TString fnamemc = "/data/janicechen/PhysicsEEJetEEC/Unfolding/20240328_Unfolding/v2/LEP1MC1994_recons_aftercut-001_Matched.root"; 
+  TString fnamemc = "LEP1MC1994_recons_aftercut-001_Matched.root";
   TFile *inputmc =TFile::Open(fnamemc);
-  TTree *mc=(TTree*)inputmc->Get("PairTree"); 
+  TTree *mc=(TTree*)inputmc->Get("PairTree");
 
-  TFile* reweightFile = TFile::Open("ReweightingUncertainty_01092025.roots"); 
-  TH2D* reweightFactors_Theta = (TH2D*)reweightFile->Get("reweightFactors_Theta"); 
+  TFile* reweightFile = TFile::Open("ReweightingUncertainty_01092025.root");
+  TH2D* reweightFactors_Theta = (TH2D*)reweightFile->Get("reweightFactors_Theta");
 
+  std::vector<TF1*> reweightingFits;
+
+  int nBinsX = reweightFactors_Theta->GetNbinsX();
+  for (int i = 1; i <= nBinsX; ++i) { // Bins start from 1 in ROOT
+      // Get projection onto Y-axis for bin i in X
+      TH1D *hProj = reweightFactors_Theta->ProjectionY(Form("py_%d", i), i, i);
+      TF1 *fitFunc = new TF1(Form("fit_%d", i), "pol1", 1e-6, 0.3);
+      hProj->Fit(fitFunc, "QR"); // "Q" option suppresses output
+      reweightingFits.push_back(fitFunc);
+      gStyle->SetOptStat(0);
+      gStyle->SetOptTitle(0);
+      TCanvas *canvas = new TCanvas(Form("canvas_%d", i), Form("Fit Projection X-bin %d", i), 600, 600);
+      canvas->SetLogx();
+      hProj->Draw(); // Draw histogram
+      fitFunc->SetLineColor(kRed);
+      fitFunc->Draw("same"); // Overlay fit
+        // Add a legend
+      TLegend *legend = new TLegend(0.6, 0.7, 0.9, 0.85);
+      legend->AddEntry(hProj, "Data Projection", "lep");
+      legend->AddEntry(fitFunc, Form("Fit: %.3f + %.3f*x", fitFunc->GetParameter(0), fitFunc->GetParameter(1)), "l");
+      legend->Draw();
+
+      // Save the canvas as an image and a ROOT file
+      canvas->SaveAs(Form("./fits/fit_projection_bin_%d.png", i));  // Save as PNG
+      delete canvas;
+      delete hProj; // Clean up histogram after use
+  }
 
   Int_t nEv2=mc->GetEntries();
   std::cout << "nEvents in the mc " << nEv2 << std::endl;
@@ -213,47 +241,58 @@ void RooUnfoldSimple_DoubleLogBins_ZTheta(std::string date = "02122025"){
   mc->SetBranchAddress("RecoE2", &recoE2);
 
   Int_t countm=0;
+  int countLargeReweight = 0;
   for(int iEntry=0; iEntry< nEv2; iEntry++){
     mc->GetEntry(iEntry);
     for(int i=0; i<nPairsMC; i++){
       if(recoE1[i] < 0 || recoE2[i] < 0) continue; // skip over the unmatched pairs
-      if(thetaRecoMC[i] < BinMin || thetaGen[i] < BinMin )continue; 
+      if(thetaRecoMC[i] < BinMin || thetaGen[i] < BinMin )continue;
       int BinThetaMeasuredMC = FindBin(thetaRecoMC[i], 2 * BinCount, Bins);
       int BinThetaGenMC = FindBin(thetaGen[i], 2 * BinCount, Bins);
       double zMeasuredMC = (1-cos(thetaRecoMC[i]))/2;
-      double zGenMC = (1-cos(thetaGen[i]))/2; 
-      int BinZMeasured = FindBin(zMeasuredMC, 2 * BinCount, zBins); 
-      int BinZGen = FindBin(zGenMC, 2*BinCount,zBins); 
-      int BinEnergyGen = FindBin(e1e2gen[i], EnergyBinCount, EnergyBins); 
+      double zGenMC = (1-cos(thetaGen[i]))/2;
+      int BinZMeasured = FindBin(zMeasuredMC, 2 * BinCount, zBins);
+      int BinZGen = FindBin(zGenMC, 2*BinCount,zBins);
+      int BinEnergyGen = FindBin(e1e2gen[i], EnergyBinCount, EnergyBins);
       int BinEnergyRecoMC = FindBin(e1e2recoMC[i], EnergyBinCount, EnergyBins);
       if(BinZMeasured < 0 || BinZGen < 0 || BinEnergyGen < 0 || BinEnergyRecoMC < 0 || BinThetaGenMC < 0 || BinThetaMeasuredMC < 0){
         std::cout << "Theta " << thetaRecoMC[i] << " ZData " << zMeasuredMC << " EnergyData " << e1e2recoMC[i] << std::endl;
-      } 
+      }
       if(BinZMeasured > 200 || BinZGen > 200 || BinEnergyGen > 200 || BinEnergyRecoMC > 200 || BinThetaGenMC > 200 || BinThetaMeasuredMC > 200){
         std::cout << "Theta " << thetaRecoMC[i] << " ZData " << zMeasuredMC << " EnergyData " << e1e2recoMC[i] << std::endl;
-      } 
-      
+      }
+
       closureCheck_Theta->Fill(BinThetaGenMC,e1e2gen[i]);
       h2true_Theta->Fill(BinThetaGenMC, e1e2gen[i]);
-      h2true_Z->Fill(BinZGen, e1e2gen[i]); 
+      h2true_Z->Fill(BinZGen, e1e2gen[i]);
       closureCheck_Z->Fill(BinZGen, e1e2gen[i]);
       h2smeared_Theta->Fill(BinThetaMeasuredMC,e1e2recoMC[i]);
-      h2smeared_Z->Fill(BinZMeasured, e1e2recoMC[i]); 
+      h2smeared_Z->Fill(BinZMeasured, e1e2recoMC[i]);
       // reweight the response
-      double reweightFactor = reweightFactors_Theta->GetBinContent(BinThetaMeasuredMC, BinEnergyRecoMC); 
+      // std vectors are 0 indexed while binning is index 1
+     //std::cout << "Checking reweighting factor for bin " << BinThetaMeasuredMC-1 << " and  energy " << e1e2recoMC[i] << std::endl;
+
+      double reweightFactor;
+      if(BinThetaMeasuredMC > 0 && BinThetaMeasuredMC < 199) reweightFactor = reweightingFits.at(BinThetaMeasuredMC-1)->Eval(e1e2recoMC[i]);//reweightFactors_Theta->GetBinContent(BinThetaMeasuredMC, BinEnergyRecoMC);
+      else reweightFactor = 1;
+      if(reweightFactor < 0)reweightFactor = abs(reweightFactor);
+      if(abs(reweightFactor-1) > 0.5){
+        // std::cout << "Large Reweighting factor of " << reweightFactor << " for bin " << BinThetaMeasuredMC-1 << " and  energy " << e1e2recoMC[i] <<  std::endl;
+        countLargeReweight++;
+      }
       response_Theta.Fill(BinThetaMeasuredMC, e1e2recoMC[i],BinThetaGenMC,e1e2gen[i]*reweightFactor);
-      response_Z.Fill(BinZMeasured, e1e2recoMC[i], BinZGen, e1e2gen[i]);
+      response_Z.Fill(BinZMeasured, e1e2recoMC[i], BinZGen, e1e2gen[i]*reweightFactor);
     }
   }
 
-  std::cout << "Entries in h2true_Z " << h2true_Z->GetEntries() << " entries in h2true_Theta " << h2true_Theta->GetEntries() << std::endl; 
-
+  std::cout << "Entries in h2true_Z " << h2true_Z->GetEntries() << " entries in h2true_Theta " << h2true_Theta->GetEntries() << std::endl;
+  std::cout << "Large Reweight Count: " << countLargeReweight << std::endl;
   //------------------------------------------------
 
 
 
 
-  TFile *fout = new TFile(Form("unfoldingE2C_DataUnfolding_DoubleLogBinning_BinningOption1_Reweighted%s.root",date.c_str()),"RECREATE");
+  TFile *fout = new TFile(Form("unfoldingE2C_DataUnfolding_DoubleLogBinning_BinningOption1_Reweighted_FittingMethod%s.root",date.c_str()),"RECREATE");
   fout->cd();
   h2raw_Theta->Write();
   h2raw_Z->Write();
@@ -261,13 +300,13 @@ void RooUnfoldSimple_DoubleLogBins_ZTheta(std::string date = "02122025"){
   h2smeared_Z->Write();
   h2true_Theta->Write();
   h2true_Z->Write();
-  closureCheck_Theta->Write(); 
-  closureCheck_Z->Write(); 
+  closureCheck_Theta->Write();
+  closureCheck_Z->Write();
 
    TH1D *HTrue_Theta = (TH1D*)h2true_Theta->ProjectionX("h1True_Theta_ProjectionX");
    for (int i = 1; i <= h2true_Theta->GetNbinsX(); ++i) {
         double weight = 0;
-        double error = 0; 
+        double error = 0;
         for (int j = 1; j <= h2true_Theta->GetNbinsY(); ++j) {
             double binContent = h2true_Theta->GetBinContent(i, j);
             double binError= h2true_Theta->GetBinError(i,j);
@@ -277,14 +316,14 @@ void RooUnfoldSimple_DoubleLogBins_ZTheta(std::string date = "02122025"){
         }
         HTrue_Theta->SetBinContent(i, weight);
         HTrue_Theta->SetBinError(i, sqrt(error));
-    } 
+    }
 
-    HTrue_Theta->Write(); 
+    HTrue_Theta->Write();
 
        TH1D *HTrue_Z = (TH1D*)h2true_Z->ProjectionX("h1True_Z_ProjectionX");
    for (int i = 1; i <= h2true_Z->GetNbinsX(); ++i) {
         double weight = 0;
-        double error = 0; 
+        double error = 0;
         for (int j = 1; j <= h2true_Z->GetNbinsY(); ++j) {
             double binContent = h2true_Z->GetBinContent(i, j);
             double binError= h2true_Z->GetBinError(i,j);
@@ -294,18 +333,18 @@ void RooUnfoldSimple_DoubleLogBins_ZTheta(std::string date = "02122025"){
         }
         HTrue_Z->SetBinContent(i, weight);
         HTrue_Z->SetBinError(i, sqrt(error));
-    } 
-    HTrue_Z->Write(); 
+    }
+    HTrue_Z->Write();
 
   // int iter = 2;
-  for(int iter = 3; iter < 4; iter++){
+  for(int iter = 4; iter < 5; iter++){
 
     std::cout << "Unfolding for theta iter " << iter << std::endl;
     // -------------------------------
     // unfolding for the theta
     RooUnfoldBayes  unfold_Theta(&response_Theta, h2raw_Theta, iter);
-    unfold_Theta.SetNToys(0); 
-    TH2D* hunf_Theta =  dynamic_cast<TH2D*>(unfold_Theta.Hreco(RooUnfold::kNoError));
+    // unfold_Theta.SetNToys(0);
+    TH2D* hunf_Theta =  dynamic_cast<TH2D*>(unfold_Theta.Hreco());
     TH1* hfold_Theta = response_Theta.ApplyToTruth(hunf_Theta, "");
     TH2D *htempUnf_Theta=(TH2D*)hunf_Theta->Clone("htempUnf_Theta");
     htempUnf_Theta->SetName(Form("Bayesian_Unfoldediter%d_Theta",iter));
@@ -320,9 +359,8 @@ void RooUnfoldSimple_DoubleLogBins_ZTheta(std::string date = "02122025"){
     // -------------------------------
     // unfolding for the Z
     RooUnfoldBayes  unfold_Z(&response_Z, h2raw_Z, iter);
-    unfold_Z.SetNToys(0); 
-    TH2D* hunf_Z =  dynamic_cast<TH2D*>(unfold_Z.Hreco(RooUnfold::kNoError));
-  
+    TH2D* hunf_Z =  dynamic_cast<TH2D*>(unfold_Z.Hreco());
+
     TH1* hfold_Z = response_Z.ApplyToTruth(hunf_Z, "");
     TH2D *htempUnf_Z=(TH2D*)hunf_Theta->Clone("htempUnf_Z");
     htempUnf_Z->SetName(Form("Bayesian_Unfoldediter%d_Z",iter));
@@ -338,13 +376,13 @@ void RooUnfoldSimple_DoubleLogBins_ZTheta(std::string date = "02122025"){
     htempFold_Z->Write();
 
     TH1D *H_Theta = (TH1D*)htempUnf_Theta->ProjectionX("");
-    TH1D *H_Z = (TH1D*)htempUnf_Z->ProjectionX(); 
+    TH1D *H_Z = (TH1D*)htempUnf_Z->ProjectionX();
     H_Theta->Reset();
-    H_Z->Reset(); 
-    // handle the errors 
+    H_Z->Reset();
+    // handle the errors
     for (int i = 1; i <= htempUnf_Z->GetNbinsX(); ++i) {
         double weight = 0;
-        double error = 0; 
+        double error = 0;
         for (int j = 1; j <= htempUnf_Z->GetNbinsY(); ++j) {
             double binContent = htempUnf_Z->GetBinContent(i, j);
             double binError= htempUnf_Z->GetBinError(i,j);
@@ -354,11 +392,11 @@ void RooUnfoldSimple_DoubleLogBins_ZTheta(std::string date = "02122025"){
         }
         H_Z->SetBinContent(i, weight);
         H_Z->SetBinError(i, sqrt(error));
-    } 
-    // handle the errors 
+    }
+    // handle the errors
     for (int i = 1; i <= htempUnf_Theta->GetNbinsX(); ++i) {
         double weight = 0;
-        double error = 0; 
+        double error = 0;
         for (int j = 1; j <= htempUnf_Theta->GetNbinsY(); ++j) {
             double binContent = htempUnf_Theta->GetBinContent(i, j);
             double binError= htempUnf_Theta->GetBinError(i,j);
@@ -372,8 +410,8 @@ void RooUnfoldSimple_DoubleLogBins_ZTheta(std::string date = "02122025"){
     H_Theta->SetName(Form("Bayesian_Unfoldediter%d_Theta_ProjectionX",iter));
     H_Z->SetName(Form("Bayesian_Unfoldediter%d_Z_ProjectionX",iter));
 
-    H_Theta->Write(); 
-    H_Z->Write(); 
+    H_Theta->Write();
+    H_Z->Write();
 
   }
   fout->Close();

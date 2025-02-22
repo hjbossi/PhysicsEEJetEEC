@@ -39,6 +39,7 @@ using std::endl;
 #include "TLatex.h"
 #include "TGaxis.h"
 #include "TGraph.h"
+#include "TF1.h"
 
 //==============================================================================
 // Global definitions
@@ -49,9 +50,9 @@ const Double_t cutdummy= -99999.0;
 
 int FindBin(double Value, int NBins, double Bins[]);
 void createReweightingHisto(std::string date);
-void SetPad(TPad &P); 
-void MakeCanvas2D(TH2D* Histogram, std::string Output, std::string X, std::string Y, double WorldMin, double WorldMax,  bool LogX); 
-void DivideByBin(TH1D &H, double Bins[]); 
+void SetPad(TPad &P);
+void MakeCanvas2D(TH2D* Histogram, std::string Output, std::string X, std::string Y, double WorldMin, double WorldMax,  bool LogX);
+void DivideByBin(TH1D &H, double Bins[]);
 //==============================================================================
 // Helper Functions
 //==============================================================================
@@ -87,7 +88,7 @@ void createReweightingHisto(std::string date = "01092025"){
    double zBinMax = 0.5;
 
    // energy binning
-   const int EnergyBinCount = 15; 
+   const int EnergyBinCount = 15;
    double EnergyBins[EnergyBinCount+1];
    double EnergyBinMin = 4e-6;
    double EnergyBinMax = 0.2;
@@ -103,7 +104,7 @@ void createReweightingHisto(std::string date = "01092025"){
       // z double log binning
       zBins[i] = exp(log(zBinMin) + (log(zBinMax) - log(zBinMin)) / BinCount * i);
       zBins[2*BinCount-i] = zBinMax * 2 - exp(log(zBinMin) + (log(zBinMax) - log(zBinMin)) / BinCount * i);
-    
+
    }
 
   // here is what I denote as binning option #1
@@ -142,12 +143,12 @@ void createReweightingHisto(std::string date = "01092025"){
     smeared->GetEntry(iEntry);
     for(int i=0; i<nPairsData; i++){
       if(recoE1Data[i] < 0 || recoE2Data[i] < 0) continue; // skip over the unmatched pairs
-      if(thetaData[i] <  BinMin) continue; 
+      if(thetaData[i] <  BinMin) continue;
       int BinTheta = FindBin(thetaData[i], 2 * BinCount, Bins);
-      double z = (1-cos(thetaData[i]))/2; 
+      double z = (1-cos(thetaData[i]))/2;
       h2raw_Theta->Fill(BinTheta,e1e2data[i], 1.0);
-      int BinZ = FindBin(z, 2*BinCount, zBins); 
-      h2raw_Z->Fill(BinZ,e1e2data[i], 1.0); 
+      int BinZ = FindBin(z, 2*BinCount, zBins);
+      h2raw_Z->Fill(BinZ,e1e2data[i], 1.0);
     }
   }
   std::cout << "Integral in theta " << h2raw_Theta->Integral() << " Integral in Z " << h2raw_Z->Integral() << std::endl;
@@ -158,9 +159,9 @@ void createReweightingHisto(std::string date = "01092025"){
   int nPairsMC;
 
 
-  TString fnamemc = "/data/janicechen/PhysicsEEJetEEC/Unfolding/20240328_Unfolding/v2/LEP1MC1994_recons_aftercut-001_Matched.root"; 
+  TString fnamemc = "LEP1MC1994_recons_aftercut-001_Matched.root";
   TFile *inputmc =TFile::Open(fnamemc);
-  TTree *mc=(TTree*)inputmc->Get("PairTree"); 
+  TTree *mc=(TTree*)inputmc->Get("PairTree");
 
   Int_t nEv2=mc->GetEntries();
   std::cout << "nEvents in the mc " << nEv2 << std::endl;
@@ -178,37 +179,39 @@ void createReweightingHisto(std::string date = "01092025"){
     mc->GetEntry(iEntry);
     for(int i=0; i<nPairsMC; i++){
       if(recoE1[i] < 0 || recoE2[i] < 0) continue; // skip over the unmatched pairs
-      if(thetaRecoMC[i] < BinMin || thetaGen[i] < BinMin )continue; 
+      if(thetaRecoMC[i] < BinMin || thetaGen[i] < BinMin )continue;
       int BinThetaMeasuredMC = FindBin(thetaRecoMC[i], 2 * BinCount, Bins);
       int BinThetaGenMC = FindBin(thetaGen[i], 2 * BinCount, Bins);
       double zMeasuredMC = (1-cos(thetaRecoMC[i]))/2;
-      double zGenMC = (1-cos(thetaGen[i]))/2; 
-      int BinZMeasured = FindBin(zMeasuredMC, 2 * BinCount, zBins); 
-      int BinZGen = FindBin(zGenMC, 2*BinCount,zBins); 
-      int BinEnergyGen = FindBin(e1e2gen[i], EnergyBinCount, EnergyBins); 
+      double zGenMC = (1-cos(thetaGen[i]))/2;
+      int BinZMeasured = FindBin(zMeasuredMC, 2 * BinCount, zBins);
+      int BinZGen = FindBin(zGenMC, 2*BinCount,zBins);
+      int BinEnergyGen = FindBin(e1e2gen[i], EnergyBinCount, EnergyBins);
       int BinEnergyRecoMC = FindBin(e1e2recoMC[i], EnergyBinCount, EnergyBins);
       if(BinZMeasured < 0 || BinZGen < 0 || BinEnergyGen < 0 || BinEnergyRecoMC < 0 || BinThetaGenMC < 0 || BinThetaMeasuredMC < 0){
         std::cout << "Theta " << thetaRecoMC[i] << " ZData " << zMeasuredMC << " EnergyData " << e1e2recoMC[i] << std::endl;
-      } 
+      }
       if(BinZMeasured > 200 || BinZGen > 200 || BinEnergyGen > 200 || BinEnergyRecoMC > 200 || BinThetaGenMC > 200 || BinThetaMeasuredMC > 200){
         std::cout << "Theta " << thetaRecoMC[i] << " ZData " << zMeasuredMC << " EnergyData " << e1e2recoMC[i] << std::endl;
-      } 
+      }
       h2smeared_Theta->Fill(BinThetaMeasuredMC,e1e2recoMC[i]);
-      h2smeared_Z->Fill(BinZMeasured, e1e2recoMC[i]); 
+      h2smeared_Z->Fill(BinZMeasured, e1e2recoMC[i]);
     }
   }
 
   //------------------------------------------------
   h2raw_Theta->Scale(1./nEv);
-  h2smeared_Theta->Scale(1./nEv2); 
+  h2smeared_Theta->Scale(1./nEv2);
   h2raw_Theta->Divide(h2smeared_Theta);
-  h2raw_Theta->SetName("reweightFactors_Theta"); 
+  h2raw_Theta->SetName("reweightFactors_Theta");
 
   TFile *fout = new TFile(Form("ReweightingUncertainty_%s.root",date.c_str()),"RECREATE");
   fout->cd();
-  h2raw_Theta->Write(); 
+  h2raw_Theta->Write();
 
   fout->Close();
+
+
 
   //------------------------------------------------
   // now do the plotting
@@ -221,15 +224,31 @@ void createReweightingHisto(std::string date = "01092025"){
   gStyle->SetOptTitle(0);
   gStyle->SetOptStat(0);
 
-  
-  TCanvas* c = new TCanvas("c", "c", 600, 600);
-  c->SetTickx(1);
-  c->SetTicky(1);
-  c->SetLogy();
-  // c->SetLogz(); 
-  c->SetRightMargin(0.13);
-  c->SetLeftMargin(0.13);
+  // --------------------------------------------
+  // test draw a projection onto a canvas
+  // --------------------------------------------
+  TCanvas* c2 = new TCanvas("c2", "c2", 600, 600);
+  c2->SetTickx(1);
+  c2->SetTicky(1);
+  //c2->SetLogy();
+  c2->SetLogx();
+  // c->SetLogz();
+  c2->SetRightMargin(0.13);
+  c2->SetLeftMargin(0.13);
 
+  TH1D* projectionTest = (TH1D*)h2raw_Theta->ProjectionY("projY", 20, 20);
+  projectionTest->Draw();
+
+  TF1 *fpol = new TF1("fpol", "pol1", 1e-5, 1e-2);
+  fpol->SetLineWidth(2);
+  projectionTest->Fit(fpol, "R");
+
+  c2->SaveAs("BinningTest.pdf");
+
+
+  // --------------------------------------------
+  // draw divisional reweighting factor
+  // --------------------------------------------
 
   MakeCanvas2D(h2raw_Theta,  "ReweightingFactors_EEC2","#theta_{L}", "E_{i}E_{j}/E^{2}", 2e-4, 100, true);
 }
@@ -246,7 +265,7 @@ void MakeCanvas2D(TH2D* Histogram, std::string Output,
 
    double WorldXMin = LogX ? 0 : 0;
    double WorldXMax = LogX ? N : M_PI;
-   
+
    double PadWidth = 1200;
    double PadHeight =  640 + 240;
    double PadRHeight = 0.001;
@@ -272,15 +291,15 @@ void MakeCanvas2D(TH2D* Histogram, std::string Output,
    Pad.cd();
 
 
-   double WorldRMin = Histogram->GetYaxis()->GetXmin(); 
-   double WorldRMax = Histogram->GetYaxis()->GetXmax(); 
+   double WorldRMin = Histogram->GetYaxis()->GetXmin();
+   double WorldRMax = Histogram->GetYaxis()->GetXmax();
 
    TH2D HWorld("HWorld", "", N, WorldXMin, WorldXMax, 100, WorldRMin, WorldRMax);
    HWorld.SetStats(0);
    HWorld.GetXaxis()->SetTickLength(0);
    HWorld.GetXaxis()->SetLabelSize(0);
-   HWorld.SetMaximum(Histogram->GetMaximum()); 
-   HWorld.SetMinimum(Histogram->GetMinimum()); 
+   HWorld.SetMaximum(Histogram->GetMaximum());
+   HWorld.SetMinimum(Histogram->GetMinimum());
 
    HWorld.Draw("axis");
    Histogram->Draw("colz same");
@@ -296,10 +315,10 @@ void MakeCanvas2D(TH2D* Histogram, std::string Output,
 
    TH2D HWorldR("HWorldR", "", N, WorldXMin, WorldXMax, 100, WorldRMin, WorldRMax);
    TGraph G2;
-    HWorldR.SetMaximum(Histogram->GetMaximum()/100); 
-    HWorldR.SetMinimum(Histogram->GetMinimum()); 
+    HWorldR.SetMaximum(Histogram->GetMaximum()/100);
+    HWorldR.SetMinimum(Histogram->GetMinimum());
 
-   
+
    double BinMin    = 0.002;
    double BinMiddle = M_PI / 2;
    double BinMax    = M_PI - 0.002;
@@ -312,7 +331,7 @@ void MakeCanvas2D(TH2D* Histogram, std::string Output,
    TGaxis X3(MarginL, MarginB + PadRHeight, MarginL + PadWidth / 2, MarginB + PadRHeight, BinMin, BinMiddle, 510, "+-GS");
    TGaxis X4(MarginL + PadWidth, MarginB + PadRHeight, MarginL + PadWidth / 2, MarginB + PadRHeight, BinMin, BinMiddle, 510, "+-GS");
    TGaxis Y2(MarginL, MarginB + PadRHeight, MarginL, MarginB + PadRHeight + PadHeight, WorldRMin, WorldRMax, 510, "G");
-   std::cout << "WorldR min" << WorldRMin << " WorldRMax " << WorldRMax  << std::endl; 
+   std::cout << "WorldR min" << WorldRMin << " WorldRMax " << WorldRMax  << std::endl;
    // used if log X == false
    TGaxis XL1(MarginL, MarginB, MarginL + PadWidth, MarginB, 0, M_PI, 510, "S");
    TGaxis XL2(MarginL, MarginB + PadRHeight, MarginL + PadWidth, MarginB + PadRHeight, 0, M_PI, 510, "+-S");
@@ -327,7 +346,7 @@ void MakeCanvas2D(TH2D* Histogram, std::string Output,
    X4.SetLabelSize(0);
    // XL1.SetLabelSize(0);
    XL2.SetLabelSize(0);
-  //Y2.SetLabelSize(0); 
+  //Y2.SetLabelSize(0);
 
    X1.SetTickSize(0.06);
    X2.SetTickSize(0.06);
@@ -345,7 +364,7 @@ void MakeCanvas2D(TH2D* Histogram, std::string Output,
    {
       XL1.Draw();
    }
-   
+
    Y2.Draw();
 
    TLatex Latex;

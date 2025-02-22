@@ -10,3 +10,8 @@ ExecuteReweighting: createReweightingHisto.cpp
 		$(ProjectBase)/CommonCode/library/*.o
 
 
+ExecutePlotReweighting: plotReweighting.cpp
+	g++ plotReweighting.cpp -o ExecutePlotReweighting \
+		`root-config --libs --cflags` \
+		-I$(ProjectBase)/CommonCode/include \
+		$(ProjectBase)/CommonCode/library/*.o
