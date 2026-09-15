@@ -1,0 +1,133 @@
+# Regenerate the publication figure on every push / pull request.
+#
+# Job "plot" (read-only token): execute script/EEC_Plot_Pub_ALEPH.ipynb and
+#   upload eec_full_range.png/.pdf, the bin table and the executed notebook as
+#   the "eec_full_range" artifact on the workflow run page.
+# Job "commit" (pushes to main only, write token, runs no third-party code):
+#   download that artifact and commit the files in plots/ back to main if they
+#   changed, so the copy on GitHub always matches the current data and notebook.
+#   Commits made with GITHUB_TOKEN do not trigger workflows, and the commit
+#   message carries [skip ci] as a second safeguard, so this cannot loop.
+name: EEC plot
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eec-plot-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  plot:
+    name: Regenerate figure
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false   # pip and the notebook run without any token
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install LaTeX for matplotlib text rendering
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            texlive-latex-base texlive-latex-extra texlive-fonts-recommended \
+            cm-super dvipng ghostscript
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Execute the notebook
+        run: |
+          jupyter nbconvert --to notebook --execute \
+            --ExecutePreprocessor.timeout=900 \
+            --output-dir plots --output EEC_Plot_Pub_ALEPH_executed.ipynb \
+            script/EEC_Plot_Pub_ALEPH.ipynb
+
+      - name: Check that the figure was produced
+        run: |
+          ls -l plots/eec_full_range.png plots/eec_full_range.pdf plots/eec_full_range_points.txt
+          python - <<'PY'
+          from pathlib import Path
+          png = Path("plots/eec_full_range.png")
+          assert png.stat().st_size > 10_000, "PNG suspiciously small"
+          print("OK", png, png.stat().st_size, "bytes")
+          PY
+
+      - name: Upload figure
+        uses: actions/upload-artifact@v4
+        with:
+          name: eec_full_range
+          path: |
+            plots/eec_full_range.png
+            plots/eec_full_range.pdf
+            plots/eec_full_range_points.txt
+            plots/EEC_Plot_Pub_ALEPH_executed.ipynb
+          if-no-files-found: error
+          retention-days: 90
+
+  commit:
+    name: Commit figure to main
+    needs: plot
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out the commit the figure was rendered from
+        uses: actions/checkout@v4
+
+      - name: Download the regenerated files
+        uses: actions/download-artifact@v4
+        with:
+          name: eec_full_range
+          path: plots
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add plots/eec_full_range.png plots/eec_full_range.pdf plots/eec_full_range_points.txt
+          if git diff --cached --quiet; then
+            echo "plots/ unchanged - nothing to commit"
+            exit 0
+          fi
+          git commit -m "Regenerate eec_full_range figure [skip ci]" \
+                     -m "Produced by the '${GITHUB_WORKFLOW}' workflow (run ${GITHUB_RUN_ID}) from ${GITHUB_SHA}."
+
+          # Push only if main is still at the commit this figure was rendered
+          # from. If main moved on, the queued run for the newer push will
+          # regenerate from the current inputs; pushing an older rendering on
+          # top of it would leave a stale figure on main.
+          git fetch origin main
+          if [ "$(git rev-parse FETCH_HEAD)" != "${GITHUB_SHA}" ]; then
+            echo "main moved past ${GITHUB_SHA} during this run - leaving the update to the run for the newer push"
+            exit 0
+          fi
+          if ! git push origin HEAD:main; then
+            git fetch origin main
+            if [ "$(git rev-parse FETCH_HEAD)" != "${GITHUB_SHA}" ]; then
+              echo "main moved while pushing - leaving the update to the run for the newer push"
+              exit 0
+            fi
+            echo "push rejected: check Settings > Actions > General > Workflow permissions (needs 'Read and write') and branch protection on main"
+            exit 1
+          fi

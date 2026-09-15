@@ -1,0 +1,12 @@
+# Jupyter
+.ipynb_checkpoints/
+plots/*_executed.ipynb
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# macOS
+.DS_Store
