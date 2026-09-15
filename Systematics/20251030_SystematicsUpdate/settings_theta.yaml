@@ -1,0 +1,47 @@
+
+output:
+  file: SystematicsE2C_Theta_10302025.root
+  histogram: Systematics_Theta
+nominal:
+  file: /home/hbossi/PhysicsEEJetEEC/Unfolding/20251002_UnfoldingStatErr/unfoldingE2C_DataUnfolding_StatErrCheck_10022025.root
+  histogram: Bayesian_Unfoldediter4_Theta
+systematics:
+  Regularization:
+    base_type: nominal
+    variant_type: file
+    variant_file:  /home/hbossi/PhysicsEEJetEEC/Unfolding/20251002_UnfoldingStatErr/unfoldingE2C_DataUnfolding_StatErrCheck_10022025.root
+    variant_histogram: Bayesian_Unfoldediter3_Theta
+  Reweighting:
+    base_type: nominal
+    variant_type: file
+    variant_file: /home/hbossi/PhysicsEEJetEEC/Unfolding/20250211_PriorUncertainty/unfoldingE2C_DataUnfolding_DoubleLogBinning_BinningOption1_Reweighted_LinearFittingMethod03242025.root
+    variant_histogram: Bayesian_Unfoldediter4_Theta
+  # varition for the number of tpc hits from 4 to 7
+  TPCHits:
+    base_type: nominal
+    variant_type: scale
+    variant_file: /home/hbossi/PhysicsEEJetEEC/Unfolding/20251002_UnfoldingStatErr/unfoldingE2C_DataUnfolding_StatErrCheck_10022025.root
+    variant_histogram: Bayesian_Unfoldediter4_Theta
+    variant_scale: 1.005
+  # varition for the matching method
+  Matching:
+    base_type: nominal
+    variant_type: scale
+    variant_file: /home/hbossi/PhysicsEEJetEEC/Unfolding/20251002_UnfoldingStatErr/unfoldingE2C_DataUnfolding_StatErrCheck_10022025.root
+    variant_histogram: Bayesian_Unfoldediter4_Theta
+    variant_scale: 1.01
+  MCBinning:
+    base_type: nominal
+    variant_type: 1dratio
+    variant_file: /home/hbossi/PhysicsEEJetEEC/Systematics/20250324_BinningSystematic/BinningSystematic_03242025.root
+    variant_numerator: h2D_Projection_Theta
+    variant_denominator: h1D_Theta
+    variant_scale: 0.5
+  MCStat:
+    base_type: nominal
+    variant_type: 1dratio
+    variant_file: /home/hbossi/PhysicsEEJetEEC/MainAnalysis/20251008_Correction/MCStatSyst_Theta.root
+    variant_numerator: HthetaMCGenBeforeRef_plus1sigma
+    variant_denominator: HthetaMCGenBeforeRef
+    variant_scale: 1.0
+
